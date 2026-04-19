@@ -435,12 +435,9 @@ if __name__ == "__main__":
     parser.add_argument("--all-items",    action="store_true", help="构建全道具缓存")
     parser.add_argument("--all-abilities",action="store_true", help="构建全特性缓存")
     parser.add_argument("--all",          action="store_true", help="构建全部缓存（pokemon+moves+items+abilities）")
-    parser.add_argument("--team",         default="",          help="从 my_team.json 按需补全缺失条目")
-    parser.add_argument("--api-data",     default="",          help="api-data 根目录路径（覆盖环境变量）")
     args = parser.parse_args()
 
-    kwargs = {"api_data_path": Path(args.api_data)} if args.api_data else {}
-    db = PokeDB(**kwargs)
+    db = PokeDB()
 
     if args.all or args.all_pokemon:
         db.build_all_pokemon()
@@ -450,10 +447,6 @@ if __name__ == "__main__":
         db.build_all_items()
     if args.all or args.all_abilities:
         db.build_all_abilities()
-    if args.team:
-        team = json.loads(Path(args.team).read_text(encoding="utf-8"))
-        db.enrich_team(team)
-        print("enrich 完成")
 
     print(f"\n缓存: {db._path}")
     print(f"  宝可梦: {len(db._data['pokemon'])} 条")

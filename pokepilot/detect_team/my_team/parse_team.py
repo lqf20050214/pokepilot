@@ -156,7 +156,7 @@ def _get_card_coords(image_path: str) -> dict:
     用新的布局检测方法获取6个卡片的坐标
     返回格式：{'left_cards': [...], 'right_cards': [...]}
     """
-    layout_result = detect_card_layout(image_path, debug=True)
+    layout_result = detect_card_layout(image_path, debug=False)
     if layout_result is None:
         raise RuntimeError(f"无法检测布局: {image_path}")
     return layout_result
