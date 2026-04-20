@@ -74,7 +74,7 @@ class PokemonBuilder:
         pika_info = self.pika_cache.get(name, {}) if not pika_info else pika_info
         # 获取招式详细信息
         top_moves = []
-        for m in pika_info.get("moves", [])[:8]:
+        for m in pika_info.get("moves", [])[:6]:
             top_moves.append(
                 (m["name"].lower().replace(" ", "-"), f"{m['pct']:.1f}%"))
 
@@ -149,7 +149,7 @@ class PokemonBuilder:
             evo_stats = self.calc_opponent_stats_range(evo_base_stats)
 
         # 构建进化形态的特性对象
-        evo_ability_obj = self.build_ability(evo_ability) if evo_ability else None
+        evo_ability_obj = [self.build_ability(evo_ability) if evo_ability else None]
 
         # 计算形态的类型相克
         evo_type_effectiveness = self.cal_effectiveness(evo_types)
@@ -480,10 +480,10 @@ class PokemonBuilder:
                 moves.append(move)
 
             # 构建特性对象
-            ability = self.build_ability(ability_input)
+            ability = [self.build_ability(ability_input)]
 
             # 构建持有物对象
-            held_item = self.build_held_item(held_item_input)
+            held_item = [self.build_held_item(held_item_input)]
 
         # 创建 Pokemon 对象
         pokemon = Pokemon(
@@ -498,7 +498,7 @@ class PokemonBuilder:
             base_stats=base_stats,
             nature=nature,
             types=types,
-            moves=[m.to_dict() if isinstance(m, Move) else m for m in moves],
+            moves=moves,
             type_effectiveness=type_effectiveness,
             sprite=sprite,
         )

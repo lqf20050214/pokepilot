@@ -62,12 +62,9 @@ def detect_card_layout(image_path, debug=False, output_dir="debug_output"):
 
     # ============ 3. 边缘检测 ============
     edges = cv2.Canny(mask, 50, 150)
-    # 膨胀边缘以连接间隙
-    edge_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    edges = cv2.dilate(edges, edge_kernel, iterations=1)
 
     # ============ 4. 轮廓检测 ============
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     # ============ 5. 矩形检测和去重 ============
     rectangles = []

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>采集卡预览 - PokePilot</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 菜单栏 -->
+        <div class="menubar">
+            <div class="menu-item" id="menu-team" onclick="toggleMenu('menu-team')">
+                我方队伍 ▾
+                <div class="dropdown-menu">
+                    <div class="dropdown-item" onclick="captureScreen('moves')">截取页面1</div>
+                    <div class="dropdown-item" onclick="captureScreen('stats')">截取页面2</div>
+                    <div class="dropdown-item" onclick="generateTeam()">生成队伍</div>
+                    <div class="dropdown-item submenu-item">
+                        读取队伍 ▶
+                        <div class="submenu" id="load-team-submenu">
+                            <div class="dropdown-item">-- 加载中 --</div>
+                        </div>
+                    </div>
+                    <div class="dropdown-item submenu-item">
+                        写入队伍 ▶
+                        <div class="submenu" id="save-team-submenu">
+                            <div class="dropdown-item">-- 加载中 --</div>
+                        </div>
+                    </div>
+                    <div class="dropdown-item submenu-item">
+                        删除队伍 ▶
+                        <div class="submenu" id="delete-team-submenu">
+                            <div class="dropdown-item">-- 加载中 --</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="menu-item" id="menu-settings" onclick="toggleMenu('menu-settings')">
+                设置 ▾
+                <div class="dropdown-menu">
+                    <div class="dropdown-item submenu-item">
+                        选择视频设备 ▶
+                        <div class="submenu" id="device-submenu">
+                            <div class="dropdown-item">-- 加载中 --</div>
+                        </div>
+                    </div>
+                    <div class="dropdown-item submenu-item">
+                        选择音频设备 ▶
+                        <div class="submenu" id="audio-submenu">
+                            <div class="dropdown-item">-- 加载中 --</div>
+                        </div>
+                    </div>
+                    <div class="dropdown-item" onclick="loadDevices()">刷新设备列表</div>
+                    <div class="dropdown-item" id="btn-start" onclick="startCapture()">开始</div>
+                    <div class="dropdown-item" id="btn-stop" onclick="stopCapture()" disabled>停止</div>
+                </div>
+            </div>
+            <div class="menu-item" onclick="captureScreen('opp_team')">截取对方队伍</div>
+            <div class="menu-item" onclick="generateOpponentTeam()">生成对方队伍</div>
+
+            <div class="menu-status" id="status">等待</div>
+        </div>
+
+        <!-- 主体区 -->
+        <div class="main-area">
+            <!-- 左：我方队伍 -->
+            <div class="team-col my-team">
+                <div class="pokemon-card"><div class="pokemon-placeholder">我方队伍 1</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">我方队伍 2</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">我方队伍 3</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">我方队伍 4</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">我方队伍 5</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">我方队伍 6</div></div>
+            </div>
+
+            <!-- 中：视频 -->
+            <div class="video-col">
+                <div class="video-header">
+                    实时战斗信息
+                </div>
+                <div class="video-container">
+                    <video id="video" autoplay playsinline></video>
+                </div>
+            </div>
+
+            <!-- 右：对方队伍 -->
+            <div class="team-col opp-team">
+                <div class="pokemon-card"><div class="pokemon-placeholder">对方队伍 1</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">对方队伍 2</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">对方队伍 3</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">对方队伍 4</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">对方队伍 5</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">对方队伍 6</div></div>
+            </div>
+        </div>
+
+        <!-- 底部信息区 -->
+        <div class="bottom-bar">
+            <div class="info-group">
+                <div class="info-label">设备状态</div>
+                <div class="info-value" id="info-device">未选择设备</div>
+            </div>
+            <div class="info-group">
+                <div class="info-label">日志</div>
+                <div class="info-value" id="info-log">就绪</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script src="team.js"></script>
+</body>
+</html>
