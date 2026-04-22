@@ -22,6 +22,8 @@ const TYPE_ID_MAP = {
 
 // 全局队伍数据
 let currentTeams = { 'my-team': [], 'opp-team': [] };
+// 虚化状态
+let fadedElements = { my: new Set(), opp: new Set() };
 
 
 function renderCard(pokemon, side, index) {
@@ -218,6 +220,7 @@ function renderTeam(team, side) {
         card.innerHTML = '';
         if (team[i]) card.appendChild(renderCard(team[i], side, i));
     });
+    renderSpeedAxis();
 }
 
 window.addEventListener('load', () => {
@@ -372,4 +375,165 @@ async function generateOpponentTeam() {
     } else {
         logMsg(`生成失败：${data.error}`);
     }
+}
+
+function toggleSpeedFade(side, index) {
+    if (side === 'my') {
+        const sprite = document.querySelector(`.speed-my-sprite[data-pokemon-index="${index}"]`);
+        const allTicks = document.querySelectorAll('.speed-tick.speed-my-tick');
+        const tick = allTicks[index];
+
+        const isFaded = fadedElements.my.has(index);
+        if (isFaded) {
+            fadedElements.my.delete(index);
+            if (sprite) sprite.style.opacity = '1';
+            if (tick) tick.style.opacity = '1';
+        } else {
+            fadedElements.my.add(index);
+            if (sprite) sprite.style.opacity = '0.3';
+            if (tick) tick.style.opacity = '0.3';
+        }
+    } else if (side === 'opp') {
+        const row = document.querySelector(`.speed-opp-row[data-pokemon-index="${index}"]`);
+        const isFaded = fadedElements.opp.has(index);
+        if (isFaded) {
+            fadedElements.opp.delete(index);
+            if (row) row.style.opacity = '1';
+        } else {
+            fadedElements.opp.add(index);
+            if (row) row.style.opacity = '0.3';
+        }
+    }
+}
+
+function renderSpeedAxis() {
+    const MIN_SPEED = 50;
+    const MAX_SPEED = 200;
+
+    // 我方：sprite 画在轴上
+    const myContainer = document.getElementById('speed-markers-my');
+    if (myContainer) {
+        myContainer.innerHTML = '';
+        (currentTeams['my-team'] || []).forEach((p, index) => {
+            const spd = p.stats && p.stats.speed != null ? p.stats.speed : 0;
+            const pct = Math.max(0, Math.min((spd - MIN_SPEED) / (MAX_SPEED - MIN_SPEED) * 100, 100));
+            const label = p.name_zh || p.name || '?';
+            const spritePath = p.sprite ? p.sprite.replace(/^sprites\//, '') : '';
+
+            // 图标
+            const spriteEl = document.createElement('div');
+            spriteEl.className = 'speed-my-sprite';
+            spriteEl.dataset.pokemonIndex = index;
+            spriteEl.style.left = `${pct}%`;
+            spriteEl.style.cursor = 'pointer';
+            spriteEl.title = `${label}: ${spd}`;
+            if (spritePath) spriteEl.style.backgroundImage = `url('/sprites/${spritePath}')`;
+            spriteEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleSpeedFade('my', index);
+            });
+            myContainer.appendChild(spriteEl);
+        });
+
+        // 动态添加我方速度到 speed-axis-main
+        const axisMain = document.getElementById('speed-axis-main');
+        const existingMyTicks = axisMain.querySelectorAll('.speed-tick.speed-my-tick');
+        existingMyTicks.forEach(el => el.remove());
+
+        (currentTeams['my-team'] || []).forEach((p, index) => {
+            const spd = p.stats && p.stats.speed != null ? p.stats.speed : 0;
+            const pct = Math.max(0, Math.min((spd - MIN_SPEED) / (MAX_SPEED - MIN_SPEED) * 100, 100));
+
+            const tickEl = document.createElement('div');
+            tickEl.className = 'speed-tick speed-my-tick';
+            tickEl.dataset.pokemonIndex = index;
+            tickEl.style.left = `${pct}%`;
+            tickEl.innerHTML = `<span>${spd}</span>`;
+            axisMain.appendChild(tickEl);
+        });
+    }
+
+    // 对方：前3在轴上方，后3在轴下方，每行一个 Pokemon（精灵 + min + bar + max）
+    function fillOppSection(containerId, pokemon, startIndex) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML = '';
+        pokemon.forEach((p, i) => {
+            const globalIndex = startIndex + i;
+            const spd = p.stats && p.stats.speed;
+            const [sMin, sMax] = Array.isArray(spd) ? spd : [spd || 0, spd || 0];
+            const pctMin = Math.max(0, Math.min((sMin - MIN_SPEED) / (MAX_SPEED - MIN_SPEED) * 100, 100));
+            const pctMax = Math.max(0, Math.min((sMax - MIN_SPEED) / (MAX_SPEED - MIN_SPEED) * 100, 100));
+            const label = p.name_zh || p.name || '?';
+            const spritePath = p.sprite ? p.sprite.replace(/^sprites\//, '') : '';
+
+            const rowEl = document.createElement('div');
+            rowEl.className = 'speed-opp-row';
+            rowEl.dataset.pokemonIndex = globalIndex;
+            rowEl.style.cursor = 'pointer';
+            rowEl.title = `${label}: ${sMin}–${sMax}`;
+
+            // 范围条
+            const barEl = document.createElement('div');
+            barEl.className = 'speed-opp-bar';
+            barEl.style.left = `${pctMin}%`;
+            barEl.style.width = `${Math.max(pctMax - pctMin, 0.5)}%`;
+            rowEl.appendChild(barEl);
+
+            // 精灵图标（bar 中间）
+            const pctMid = (pctMin + pctMax) / 2;
+            const spriteEl = document.createElement('div');
+            spriteEl.className = 'speed-opp-sprite';
+            spriteEl.style.left = `${pctMid}%`;
+            spriteEl.style.transform = 'translate(-50%, -50%)';
+            if (spritePath) spriteEl.style.backgroundImage = `url('/sprites/${spritePath}')`;
+            spriteEl.style.cursor = 'pointer';
+            rowEl.appendChild(spriteEl);
+
+            // min 值（范围条前）
+            const minEl = document.createElement('div');
+            minEl.className = 'speed-opp-text';
+            minEl.style.left = `${pctMin}%`;
+            minEl.textContent = sMin;
+            minEl.style.transform = 'translate(-100%, -50%)';
+            rowEl.appendChild(minEl);
+
+            // max 值（范围条后）
+            const maxEl = document.createElement('div');
+            maxEl.className = 'speed-opp-text';
+            maxEl.style.left = `${pctMax}%`;
+            maxEl.textContent = sMax;
+            maxEl.style.transform = 'translateY(-50%)';
+            rowEl.appendChild(maxEl);
+
+            // 为 row、sprite、bar 添加点击事件
+            const clickHandler = (e) => {
+                e.stopPropagation();
+                toggleSpeedFade('opp', globalIndex);
+            };
+            rowEl.addEventListener('click', clickHandler);
+            spriteEl.addEventListener('click', clickHandler);
+            barEl.addEventListener('click', clickHandler);
+
+            container.appendChild(rowEl);
+        });
+    }
+
+    const opp = currentTeams['opp-team'] || [];
+    fillOppSection('speed-opp-top', opp.slice(0, 3), 0);
+    fillOppSection('speed-opp-bottom', opp.slice(3, 6), 3);
+
+    // 恢复虚化状态
+    fadedElements.my.forEach(index => {
+        const sprite = document.querySelector(`.speed-my-sprite[data-pokemon-index="${index}"]`);
+        const allTicks = document.querySelectorAll('.speed-tick.speed-my-tick');
+        const tick = allTicks[index];
+        if (sprite) sprite.style.opacity = '0.3';
+        if (tick) tick.style.opacity = '0.3';
+    });
+
+    fadedElements.opp.forEach(index => {
+        const row = document.querySelector(`.speed-opp-row[data-pokemon-index="${index}"]`);
+        if (row) row.style.opacity = '0.3';
+    });
 }

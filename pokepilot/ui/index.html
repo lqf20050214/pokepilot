@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>采集卡预览 - PokePilot</title>
+    <title>宝可梦冠军对战助手 - PokePilot</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -77,13 +77,24 @@
 
             <!-- 中：视频 -->
             <div class="video-col">
-                <div class="video-header">
+                <!-- <div class="video-header">
                     实时战斗信息
-                </div>
+                </div> -->
                 <div class="video-container">
                     <video id="video" autoplay playsinline></video>
                 </div>
                 <div class="status-panel">
+                    <div id="speed-axis-container">
+                        <div id="speed-opp-top" class="speed-opp-section"></div>
+                        <div id="speed-axis-main">
+                            <div id="speed-markers-my"></div>
+                            <div class="speed-tick" style="left:0%"><span>50</span></div>
+                            <div class="speed-tick" style="left:33.33%"><span>100</span></div>
+                            <div class="speed-tick" style="left:66.67%"><span>150</span></div>
+                            <div class="speed-tick" style="left:100%"><span>200</span></div>
+                        </div>
+                        <div id="speed-opp-bottom" class="speed-opp-section"></div>
+                    </div>
                 </div>
             </div>
 

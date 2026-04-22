@@ -197,10 +197,10 @@ html, body {
 
 .status-panel {
     flex: 1;
-    padding: 12px;
+    padding: 0;
     background: #252526;
     border-top: 1px solid #3e3e42;
-    overflow-y: auto;
+    overflow: hidden;
     font-size: 12px;
     color: #d0d0d0;
 }
@@ -687,3 +687,129 @@ video {
     color: #6ba3ff;
     font-weight: 600;
 }
+
+/* ==================== 速度轴 ==================== */
+#speed-axis-container {
+    display: flex;
+    flex-direction: column;
+    padding: 0 16px;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.speed-opp-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
+    margin: 0;
+}
+
+#speed-opp-bottom {
+    padding-bottom: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+.speed-opp-row {
+    flex: 1;
+    position: relative;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+}
+
+#speed-axis-main {
+    position: relative;
+    height: 48px;
+    flex-shrink: 0;
+}
+
+#speed-axis-main::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 28px;
+    height: 2px;
+    background: #555;
+}
+
+.speed-my-sprite {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    top: 0;
+    left: 0;
+    transform: translateX(-50%);
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    image-rendering: pixelated;
+    cursor: default;
+}
+
+.speed-tick {
+    position: absolute;
+    top: 30px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.speed-tick::before {
+    content: '';
+    display: block;
+    width: 1px;
+    height: 4px;
+    background: #555;
+}
+
+.speed-tick span {
+    font-size: 9px;
+    color: #666;
+    margin-top: 1px;
+}
+
+.speed-tick.speed-my-tick span {
+    color: #4ec9b0;
+    font-weight: 500;
+    pointer-events: none;
+}
+
+.speed-opp-sprite {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    image-rendering: pixelated;
+    pointer-events: none;
+}
+
+.speed-opp-text {
+    position: absolute;
+    font-size: 8px;
+    color: #f48771;
+    white-space: nowrap;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    padding: 0 4px;
+}
+
+.speed-opp-bar {
+    position: absolute;
+    height: 3px;
+    border-radius: 1px;
+    background: #f48771;
+    opacity: 0.7;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
