@@ -14,6 +14,11 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+from pokepilot.tools.logger_util import setup_logger
+
+logger = setup_logger(__name__)
 
 from pokepilot.common.pokemon_builder import PokemonBuilder
 from pokepilot.tools.ocr_engine import read_region
@@ -71,7 +76,7 @@ _pokemon_detector = None  # 全局单例
 
 
 def _get_detector() -> PokemonDetector:
-    """获取 PokemonDetector 单例"""
+    """获取 PokemonDetector 单例，支持 debug 参数"""
     global _pokemon_detector
     if _pokemon_detector is None:
         _pokemon_detector = PokemonDetector()
@@ -124,9 +129,8 @@ def _extract_regions(img: np.ndarray, card_info: dict, slot_idx: int) -> dict:
     return regions
 
 
-def _identify_pokemon(img: np.ndarray, card_info: dict, slot_idx: int, debug: bool = False) -> dict:
+def _identify_pokemon(img: np.ndarray, card_info: dict, slot_idx: int, debug: bool = False, debug_dir: str = "debug_output/my_team") -> dict:
     """识别卡牌中的 Pokemon"""
-    from pokepilot.common.pokemon_detect import _remove_bg_multi
 
     # 提取三个矩形
     regions = _extract_regions(img, card_info, slot_idx)
@@ -139,14 +143,32 @@ def _identify_pokemon(img: np.ndarray, card_info: dict, slot_idx: int, debug: bo
         regions['type2'],
         bg_removal="multi",
         bg_colors=_BG_COLORS_MULTI,
+        remove_type_bg=True,
+        debug=debug,
     )
 
-    # 保存去除背景后的 sprite（用于调试）
+    # 保存三个 region 图片用于调试
     if debug:
+        from pokepilot.common.pokemon_detect import _remove_bg_multi, _remove_bg, _TYPE_ICON_BG_COLOR, _TYPE_ICON_BG_TOLERANCE
+
+        pokemon_dir = Path(debug_dir) / "pokemon"
+        pokemon_dir.mkdir(parents=True, exist_ok=True)
+
+        # 原始图片
+        cv2.imwrite(str(pokemon_dir / f"slot_{slot_idx}_sprite.png"), regions['sprite'])
+        cv2.imwrite(str(pokemon_dir / f"slot_{slot_idx}_type1.png"), regions['type1'])
+        cv2.imwrite(str(pokemon_dir / f"slot_{slot_idx}_type2.png"), regions['type2'])
+
+        # 去除背景后的图片
         sprite_clean = _remove_bg_multi(regions['sprite'], _BG_COLORS_MULTI, tolerance=40)
-        out_dir = Path("debug_output")
-        out_dir.mkdir(exist_ok=True)
-        cv2.imwrite(str(out_dir / f"my_team_slot_{slot_idx}_sprite_clean.png"), sprite_clean)
+        type1_clean = _remove_bg(regions['type1'], bg_color=_TYPE_ICON_BG_COLOR, tolerance=_TYPE_ICON_BG_TOLERANCE)
+        type2_clean = _remove_bg(regions['type2'], bg_color=_TYPE_ICON_BG_COLOR, tolerance=_TYPE_ICON_BG_TOLERANCE)
+
+        cv2.imwrite(str(pokemon_dir / f"slot_{slot_idx}_sprite_clean.png"), sprite_clean)
+        cv2.imwrite(str(pokemon_dir / f"slot_{slot_idx}_type1_clean.png"), type1_clean)
+        cv2.imwrite(str(pokemon_dir / f"slot_{slot_idx}_type2_clean.png"), type2_clean)
+
+        logger.debug(f"三个 region 已保存：{pokemon_dir}/slot_{slot_idx}_*.png (原始和去背景版)")
 
     return result
 
@@ -198,8 +220,16 @@ def _detect_stat_color(card: np.ndarray, rx0: float, ry0: float, rx1: float, ry1
 # Moves & More 页解析
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _parse_moves_screen(image_path: str) -> tuple[list[dict], list[dict]]:
+def _parse_moves_screen(image_path: str, debug: bool = False) -> tuple[list[dict], list[dict]]:
     """提取 Moves & More 页数据"""
+    setup_logger(__name__, debug=debug)
+
+    # 初始化调试输出目录
+    moves_output_dir = None
+    if debug:
+        moves_output_dir = Path("debug_output/my_team/moves_cards")
+        moves_output_dir.mkdir(parents=True, exist_ok=True)
+
     img = cv2.imread(image_path)
     cards = []
     pokemon_infos = []
@@ -238,10 +268,11 @@ def _parse_moves_screen(image_path: str) -> tuple[list[dict], list[dict]]:
                 results_right.append((box, text, conf))
 
         slot_num = slot_idx + 1
-        print(f"\n[Slot {slot_num}] OCR 识别 {len(results)} 个区域，左列 {len(results_left)}，右列 {len(results_right)}")
+        logger.info(f"[Slot {slot_num}] OCR 识别 {len(results)} 个区域，左列 {len(results_left)}，右列 {len(results_right)}")
+        logger.debug(f"OCR 详细结果:")
         for i, (box, text, conf) in enumerate(results):
             center_x = sum(p[0] for p in box) / len(box)
-            print(f"  {i}: x={center_x:.0f} y={box[0][1]:.0f} '{text}' (conf={conf:.2f})")
+            logger.debug(f"  {i}: x={center_x:.0f} y={box[0][1]:.0f} '{text}' (conf={conf:.2f})")
 
         # 按 y 坐标分组提取（同一行的词汇合并）
         def group_by_y(items, y_threshold=20):
@@ -268,9 +299,9 @@ def _parse_moves_screen(image_path: str) -> tuple[list[dict], list[dict]]:
         left_groups = group_by_y(results_left)
         right_groups = group_by_y(results_right)
 
-        print(f"  左列 {len(left_groups)} 组，右列 {len(right_groups)} 组")
+        logger.debug(f"左列 {len(left_groups)} 组，右列 {len(right_groups)} 组")
         for i, group in enumerate(right_groups):
-            print(f"    右组{i}: {[t for _, t, _ in group]}")
+            logger.debug(f"右组{i}: {[t for _, t, _ in group]}")
 
         # 提取数据（每组内按 x 排序后拼接）
         def extract_text_from_group(group):
@@ -291,7 +322,37 @@ def _parse_moves_screen(image_path: str) -> tuple[list[dict], list[dict]]:
                 moves.append(move_text)
 
         # 识别 Pokemon
-        pokemon_info = _identify_pokemon(img, card_info, slot_idx + 1, debug=False)
+        pokemon_info = _identify_pokemon(img, card_info, slot_idx + 1, debug=debug, debug_dir="debug_output/my_team")
+
+        # 保存标注图片
+        if moves_output_dir and results:
+            card_debug = card.copy()
+
+            # 使用 PIL 绘制中文文字
+            pil_img = Image.fromarray(cv2.cvtColor(card_debug, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(pil_img)
+            # 尝试加载中文字体
+            try:
+                font = ImageFont.truetype("C:/Windows/Fonts/simhei.ttf", 12)
+            except:
+                font = ImageFont.load_default()
+
+            for box, text, conf in results:
+                pts = np.int32(box)
+                cv2.polylines(card_debug, [pts], True, (0, 255, 0), 1)  # 绿色框
+
+                # 用 PIL 绘制中文文字
+                x, y = int(box[0][0]), int(box[0][1]) - 15
+                text_label = f"{text} {conf:.2f}"
+                draw.text((x, y), text_label, fill=(0, 255, 255), font=font)
+
+            # 转换回 OpenCV 格式
+            card_debug = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+
+            slot_num = slot_idx + 1
+            card_path = moves_output_dir / f"slot_{slot_num}_ocr.png"
+            cv2.imwrite(str(card_path), card_debug)
+            logger.debug(f"OCR 标注图已保存：{card_path}")
 
         cards.append({
             "slot": slot_idx + 1,
@@ -302,17 +363,19 @@ def _parse_moves_screen(image_path: str) -> tuple[list[dict], list[dict]]:
         })
         pokemon_infos.append(pokemon_info)
         slot_num = slot_idx + 1
-        print(f"  槽{slot_num}: {pokemon_info['name']} (score={pokemon_info['score']}) | {nickname} | {ability} | {held_item}")
+        logger.info(f"槽{slot_num}: {pokemon_info['name']} (score={pokemon_info['score']}) | {nickname} | {ability} | {held_item}")
 
-    return pokemon_infos, cards
+    return pokemon_infos, cards, layout
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stats 页解析
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _parse_stats_screen(image_path: str, layout: dict = None) -> list[dict]:
+def _parse_stats_screen(image_path: str, layout: dict = None, debug: bool = False) -> list[dict]:
     """提取 Stats 页数据"""
+    setup_logger(__name__, debug=debug)
+
     img = cv2.imread(image_path)
     cards = []
 
@@ -321,8 +384,10 @@ def _parse_stats_screen(image_path: str, layout: dict = None) -> list[dict]:
     stat_names = ["hp", "attack", "defense", "sp_atk", "sp_def", "speed"]
 
     # 保存卡片图片用于标注
-    card_output_dir = Path(__file__).parent.parent.parent / "screenshots" / "stat_cards"
-    card_output_dir.mkdir(parents=True, exist_ok=True)
+    card_output_dir = None
+    if debug:
+        card_output_dir = Path("debug_output/my_team/stats_cards")
+        card_output_dir.mkdir(parents=True, exist_ok=True)
 
     # 获取动态布局坐标（如果没有传入，则自己检测）
     if layout is None:
@@ -386,8 +451,10 @@ def _parse_stats_screen(image_path: str, layout: dict = None) -> list[dict]:
             cv2.putText(card_debug, f"arrow_{key}", (x0, y1+15),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1)
 
-        card_path = card_output_dir / f"slot_{slot_num}.png"
-        cv2.imwrite(str(card_path), card_debug)
+        if debug:
+            card_path = card_output_dir / f"slot_{slot_num}.png"
+            cv2.imwrite(str(card_path), card_debug)
+            logger.debug(f"卡片标注图已保存：{card_path}")
 
         # OCR 卡片左右两部分（避免左右列框混淆）
         card_w = card.shape[1]
@@ -497,17 +564,22 @@ def _parse_stats_screen(image_path: str, layout: dict = None) -> list[dict]:
             "nature": nature,
         })
 
-        print(f"  槽{slot_num}: {nickname} | {stats} | 性格: {nature}")
+        logger.info(f"槽{slot_num}: {nickname} | {stats} | 性格: {nature}")
 
 
     return cards
 
-def parse_team(moves_screenshot: str, stats_screenshot: str) -> dict:
-    detect_cards, moves_cards = _parse_moves_screen(moves_screenshot)
+def parse_team_init(moves_screenshot: str, stats_screenshot: str, debug: bool = False) -> dict:
+    detect_cards, moves_cards, layout = _parse_moves_screen(moves_screenshot, debug=debug)
 
     # 从 moves 获取布局，传递给 stats（避免 stats 重复检测）
-    layout = _get_card_coords(moves_screenshot)
-    stats_cards = _parse_stats_screen(stats_screenshot, layout=layout)
+    stats_cards = _parse_stats_screen(stats_screenshot, layout=layout, debug=debug)
+    return detect_cards, moves_cards, stats_cards
+def parse_team(moves_screenshot: str, stats_screenshot: str, debug: bool = False) -> dict:
+    detect_cards, moves_cards, layout = _parse_moves_screen(moves_screenshot, debug=debug)
+
+    # 从 moves 获取布局，传递给 stats（避免 stats 重复检测）
+    stats_cards = _parse_stats_screen(stats_screenshot, layout=layout, debug=debug)
 
 
     builder = PokemonBuilder()
@@ -533,15 +605,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="从游戏截图生成 my_team.json")
     parser.add_argument("--moves",  required=True)
     parser.add_argument("--stats",  required=True)
+    parser.add_argument("--debug", action="store_true", help="启用调试模式")
     args = parser.parse_args()
 
-    print("── Moves & More ──")
-    moves_cards = _parse_moves_screen(args.moves)
+    setup_logger(__name__, debug=args.debug)
 
-    print("\n── Stats ──")
-    stats_cards = _parse_stats_screen(args.stats)
-    print(moves_cards)
-    print(stats_cards)
+    logger.info("── Moves & More ──")
+    moves_cards = _parse_moves_screen(args.moves, debug=args.debug)
+
+    logger.info("── Stats ──")
+    stats_cards = _parse_stats_screen(args.stats, debug=args.debug)
+    logger.debug(f"Moves 卡片: {moves_cards}")
+    logger.debug(f"Stats 卡片: {stats_cards}")
 
     
 

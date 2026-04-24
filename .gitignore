@@ -135,6 +135,7 @@ dmypy.json
 api-data/
 sprites/
 /data/*
+debug_output/
 screenshots/
 !data/type_effectiveness.json
 !data/manual.json

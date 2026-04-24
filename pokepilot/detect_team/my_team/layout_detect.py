@@ -7,6 +7,10 @@ import cv2
 import numpy as np
 import os
 
+from pokepilot.tools.logger_util import setup_logger
+
+logger = setup_logger(__name__)
+
 # ============ 静态卡片位置配置（自动检测失败时使用）============
 # 基于1920x1080分辨率的截图，通过实际测试确定
 _FALLBACK_LAYOUT = {
@@ -31,7 +35,7 @@ _FALLBACK_LAYOUT = {
 }
 
 
-def detect_card_layout(image_path, debug=False, output_dir="debug_output"):
+def detect_card_layout(image_path, debug=False, output_dir="debug_output/my_team"):
     """
     检测布局中的6个卡片位置
 
@@ -61,10 +65,11 @@ def detect_card_layout(image_path, debug=False, output_dir="debug_output"):
             ]
         }
     """
+    setup_logger(__name__, debug=debug)
 
     img = cv2.imread(image_path)
     if img is None:
-        print(f"错误：无法读取图片 {image_path}")
+        logger.error(f"无法读取图片：{image_path}")
         return None
 
     if debug:
@@ -120,7 +125,7 @@ def detect_card_layout(image_path, debug=False, output_dir="debug_output"):
     layout_info = _analyze_layout(rectangles, img)
 
     if layout_info is None:
-        print("警告：自动检测失败，使用静态fallback配置")
+        logger.warning("自动检测失败，使用静态 fallback 配置")
         return _FALLBACK_LAYOUT
 
     # ============ 调试输出 ============
@@ -321,15 +326,15 @@ def _save_debug_images(img, rectangles, layout_info, output_dir):
         crop = img[y:y+rect_h, right_x:right_x+rect_w]
         cv2.imwrite(os.path.join(crops_dir, f"R{i+1}_card.jpg"), crop)
 
-    print(f"✓ 调试图片保存到 {output_dir}")
-    print(f"✓ 6张卡片切割图保存到 {crops_dir}")
+    logger.info(f"调试图片已保存：{output_dir}")
+    logger.info(f"6张卡片已保存：{crops_dir}")
 
 
 if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 2:
-        print("用法: python layout_detect.py <image_path> [--debug]")
+        logger.error("用法: python layout_detect.py <image_path> [--debug]")
         sys.exit(1)
 
     image_path = sys.argv[1]
@@ -338,18 +343,18 @@ if __name__ == "__main__":
     result = detect_card_layout(image_path, debug=debug_mode)
 
     if result:
-        print("\n布局参数:")
-        print(f"  X: {result['layout']['top_x']}")
-        print(f"  Y: {result['layout']['top_y']}")
-        print(f"  宽: {result['layout']['rect_w']}")
-        print(f"  高: {result['layout']['rect_h']}")
-        print(f"  竖直间距: {result['layout']['vertical_gap']}")
-        print(f"  横向间距: {result['layout']['horizontal_gap']}")
+        logger.info("布局参数:")
+        logger.info(f"  X: {result['layout']['top_x']}")
+        logger.info(f"  Y: {result['layout']['top_y']}")
+        logger.info(f"  宽: {result['layout']['rect_w']}")
+        logger.info(f"  高: {result['layout']['rect_h']}")
+        logger.info(f"  竖直间距: {result['layout']['vertical_gap']}")
+        logger.info(f"  横向间距: {result['layout']['horizontal_gap']}")
 
-        print("\n左边卡片:")
+        logger.info("左边卡片:")
         for i, card in enumerate(result['left_cards'], 1):
-            print(f"  L{i}: ({card['x']}, {card['y']}) {card['w']}x{card['h']}")
+            logger.info(f"  L{i}: ({card['x']}, {card['y']}) {card['w']}x{card['h']}")
 
-        print("\n右边卡片:")
+        logger.info("右边卡片:")
         for i, card in enumerate(result['right_cards'], 1):
-            print(f"  R{i}: ({card['x']}, {card['y']}) {card['w']}x{card['h']}")
+            logger.info(f"  R{i}: ({card['x']}, {card['y']}) {card['w']}x{card['h']}")

@@ -7,10 +7,15 @@
 
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
 
 import cv2
 import numpy as np
+
+from pokepilot.tools.logger_util import setup_logger
+
+logger = setup_logger(__name__)
 
 # ── 路径 ──────────────────────────────────────────────────────────────────────
 _ROOT = Path(__file__).parent.parent.parent
@@ -27,6 +32,10 @@ _TYPE_NAMES = {
     13: "electric", 14: "psychic", 15: "ice", 16: "dragon",
     17: "dark", 18: "fairy",
 }
+
+# 属性图标背景色（RGB → BGR）
+_TYPE_ICON_BG_COLOR = (212, 93, 107)  # RGB: 107, 93, 212
+_TYPE_ICON_BG_TOLERANCE = 30
 
 
 @dataclass
@@ -119,8 +128,11 @@ def _remove_bg_multi(img: np.ndarray, bg_colors: list, tolerance: int = 60) -> n
 class PokemonDetector:
     """宝可梦识别引擎"""
 
-    def __init__(self):
+    def __init__(self, debug=False):
         """初始化，加载库和参考数据"""
+        setup_logger(__name__, debug=debug)
+        self.debug = debug
+
         # 加载属性图标
         self.type_refs = self._load_type_refs()
 
@@ -148,7 +160,7 @@ class PokemonDetector:
         # 加载 sprite 图片到对应的 variant
         self._load_sprites_into_variants()
 
-        print(f"[PokemonDetector] 加载: {len(self.sprite_refs)} 精灵图, {len(self.type_refs)} 属性图标, {len(self.variants)} 宝可梦变体")
+        logger.info(f"加载: {len(self.sprite_refs)} 精灵图, {len(self.type_refs)} 属性图标, {len(self.variants)} 宝可梦变体")
 
     def _load_type_refs(self, size: int = 32) -> dict[int, np.ndarray]:
         """加载 18 张属性图标"""
@@ -190,13 +202,25 @@ class PokemonDetector:
                 if key in self.sprite_refs:
                     variant.sprite_shiny = self.sprite_refs[key]
 
-    def _match_type(self, icon: np.ndarray, size: int = 32, threshold: float = 60.0, min_std: float = 60.0) -> int | None:
-        """识别属性图标，返回 type_id 或 None"""
+    def _match_type(self, icon: np.ndarray, size: int = 32, threshold: float = 60.0, min_std: float = 60.0, remove_bg: bool = False) -> int | None:
+        """识别属性图标，返回 type_id 或 None
+
+        Args:
+            icon: 图标图片
+            size: resize 大小
+            threshold: 匹配阈值
+            min_std: 最小标准差（判断是否有图标）
+            remove_bg: 是否去除背景色
+        """
         if icon is None or icon.size == 0:
             return None
 
         if not _has_icon(icon, min_std=min_std):
             return None
+
+        # 可选：去除背景色
+        if remove_bg:
+            icon = _remove_bg(icon, bg_color=_TYPE_ICON_BG_COLOR, tolerance=_TYPE_ICON_BG_TOLERANCE)
 
         icon_r = cv2.resize(icon, (size, size))
         best_id, best_score = None, float("inf")
@@ -239,6 +263,8 @@ class PokemonDetector:
         type2_img: np.ndarray,
         bg_removal: str = "none",
         bg_colors: list = None,
+        debug: bool = False,
+        remove_type_bg: bool = False,
     ) -> dict:
         """
         识别宝可梦。
@@ -252,6 +278,7 @@ class PokemonDetector:
                 - "auto": 自动检测单色背景（对手队伍）
                 - "multi": 多色背景（我方队伍，需要指定 bg_colors）
             bg_colors: 多色背景的颜色列表 [(B,G,R), ...]
+            debug: 是否保存调试图片
 
         Returns:
             {
@@ -272,8 +299,8 @@ class PokemonDetector:
             sprite_clean = sprite
 
         # 识别属性
-        tid1 = self._match_type(type1_img)
-        tid2 = self._match_type(type2_img)
+        tid1 = self._match_type(type1_img, remove_bg=remove_type_bg)
+        tid2 = self._match_type(type2_img, remove_bg=remove_type_bg)
         types_found = [_TYPE_NAMES[t] for t in [tid1, tid2] if t]
 
         # 按属性过滤候选
