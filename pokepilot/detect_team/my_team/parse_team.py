@@ -142,9 +142,9 @@ def _identify_pokemon(img: np.ndarray, card_info: dict, slot_idx: int, debug: bo
         regions['type1'],
         regions['type2'],
         bg_removal="multi",
+        debug=debug,
         bg_colors=_BG_COLORS_MULTI,
         remove_type_bg=True,
-        debug=debug,
     )
 
     # 保存三个 region 图片用于调试

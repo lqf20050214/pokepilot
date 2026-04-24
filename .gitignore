@@ -133,13 +133,11 @@ dmypy.json
 
 # Project specific
 api-data/
-sprites/
-/data/*
+data/my_team
+data/opp_team
 debug_output/
 screenshots/
-!data/type_effectiveness.json
-!data/manual.json
-!data/champions_roster.json
+sprites/
 
 # Claude Code
 .claude/

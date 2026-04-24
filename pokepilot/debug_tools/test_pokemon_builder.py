@@ -30,8 +30,8 @@ def test_with_real_screenshots():
 def test_opponents_with_real_screenshot():
     """测试对手队伍识别"""
 
-    team = detect_opponents_team("C:\\Users\\wangh\\test\\pokepilot\\screenshots\\opp_team\\team.png")
-    print(team)
+    team = detect_opponents_team("C:\\Users\\wangh\\test\\pokepilot\\screenshots\\opp_team\\team.png", debug=True)
+    # print(team)
     output_file = Path("debug_output/parse_opp_team_test.json")
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text(json.dumps([i.to_dict() for i in team['roster']], ensure_ascii=False, indent=2), encoding="utf-8")
@@ -46,5 +46,5 @@ if __name__ == "__main__":
 
     # detect_cards, moves_cards, layout = _parse_moves_screen(moves_screenshot, debug=False)
     # stats_cards = _parse_stats_screen(stats_screenshot, layout=layout, debug=False)
-    test_with_real_screenshots()
-    # test_opponents_with_real_screenshot()
+    # test_with_real_screenshots()
+    test_opponents_with_real_screenshot()
