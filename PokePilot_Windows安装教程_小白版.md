@@ -78,20 +78,8 @@ pip install -r requirements.txt
 
 ---
 
-## 第三步：一键下载宝可梦数据
-
-PokePilot 需要宝可梦的数据和图片才能运行。项目自带了一个自动化脚本，一行命令搞定：
-
-```
-powershell -ExecutionPolicy Bypass -File init.ps1
-```
-
-这个脚本会自动帮你完成以下事情：
-- 下载 PokeAPI 数据
-- 下载宝可梦精灵图
-- 构建本地数据库
-
-> 这一步需要联网，整体需要 **5-15 分钟**，取决于网速。耐心等它跑完，不要关闭窗口。如果精灵图下载失败，脚本会提示你手动解压 `sprites.rar`（见下方常见问题）。
+## 第三步：解压zip
+解压 `sprites.zip`
 
 ---
 
