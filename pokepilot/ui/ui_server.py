@@ -118,7 +118,8 @@ def _compute_damage_range(attacker, defender, move):
 
 def _is_spread_move(move):
     """轻量识别双打范围招式（命中多个目标时会有伤害修正）。"""
-    move_name = (move.get("name") or "").lower()
+    move_name_raw = (move.get("name") or "").lower().strip()
+    move_name = move_name_raw.replace(" ", "-").replace("_", "-")
     short_effect = (move.get("short_effect") or "").lower()
     short_effect_zh = move.get("short_effect_zh") or ""
     spread_move_names = {
@@ -164,9 +165,11 @@ def _apply_spread_modifier(range_info, battle_mode, is_spread_move):
     if battle_mode != "double" or not is_spread_move:
         return range_info
     modifier = 0.75
+    damage_min = 0 if range_info["damage_min"] <= 0 else max(1, floor(range_info["damage_min"] * modifier))
+    damage_max = 0 if range_info["damage_max"] <= 0 else max(1, floor(range_info["damage_max"] * modifier))
     return {
-        "damage_min": max(1, floor(range_info["damage_min"] * modifier)),
-        "damage_max": max(1, floor(range_info["damage_max"] * modifier)),
+        "damage_min": damage_min,
+        "damage_max": damage_max,
         "hp_pct_min": round(range_info["hp_pct_min"] * modifier, 2),
         "hp_pct_max": round(range_info["hp_pct_max"] * modifier, 2),
         "type_multiplier": range_info["type_multiplier"],
