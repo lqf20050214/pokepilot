@@ -116,6 +116,44 @@ def _compute_damage_range(attacker, defender, move):
     }
 
 
+def _is_guaranteed_critical_move(move):
+    """识别“必定击中要害”技能（不含仅提高要害率）。"""
+    move_name_raw = (move.get("name") or "").lower().strip()
+    move_name = move_name_raw.replace(" ", "-").replace("_", "-")
+    short_effect = (move.get("short_effect") or "").lower()
+    short_effect_zh = move.get("short_effect_zh") or ""
+    guaranteed_critical_move_names = {
+        "frost-breath",
+        "storm-throw",
+        "wicked-blow",
+        "surging-strikes",
+        "flower-trick",
+    }
+    if move_name in guaranteed_critical_move_names:
+        return True
+    guaranteed_tokens_en = [
+        "always results in a critical hit",
+        "always scores a critical hit",
+    ]
+    if any(token in short_effect for token in guaranteed_tokens_en):
+        return True
+    return "必定会击中要害" in short_effect_zh
+
+
+def _apply_guaranteed_critical_modifier(range_info, is_guaranteed_critical):
+    """必定要害修正：当前简化按 1.5 倍处理。"""
+    if not is_guaranteed_critical:
+        return range_info
+    crit_modifier = 1.5
+    return {
+        "damage_min": 0 if range_info["damage_min"] <= 0 else max(1, floor(range_info["damage_min"] * crit_modifier)),
+        "damage_max": 0 if range_info["damage_max"] <= 0 else max(1, floor(range_info["damage_max"] * crit_modifier)),
+        "hp_pct_min": round(range_info["hp_pct_min"] * crit_modifier, 2),
+        "hp_pct_max": round(range_info["hp_pct_max"] * crit_modifier, 2),
+        "type_multiplier": range_info["type_multiplier"],
+    }
+
+
 def _is_spread_move(move):
     """轻量识别双打范围招式（命中多个目标时会有伤害修正）。"""
     move_name_raw = (move.get("name") or "").lower().strip()
@@ -501,12 +539,14 @@ def create_app():
             if not move or move.get("power") is None:
                 return jsonify({"success": False, "error": "该技能非伤害技能"}), 400
             is_spread = _is_spread_move(move)
+            is_guaranteed_critical = _is_guaranteed_critical_move(move)
 
             rows = []
             for opp in opp_team:
                 range_info = _compute_damage_range(attacker, opp, move)
                 if range_info is None:
                     continue
+                range_info = _apply_guaranteed_critical_modifier(range_info, is_guaranteed_critical)
                 range_info = _apply_spread_modifier(range_info, battle_mode, is_spread)
                 hp_min, hp_max = _stat_min_max((opp.get("stats") or {}).get("hp"))
                 rows.append({
@@ -532,6 +572,7 @@ def create_app():
                 "move_priority": _to_int(move.get("priority"), 0),
                 "battle_mode": battle_mode,
                 "is_spread_move": is_spread,
+                "is_guaranteed_critical": is_guaranteed_critical,
                 "is_multi_hit": _is_multi_hit_move(move),
                 "rows": rows,
             })
