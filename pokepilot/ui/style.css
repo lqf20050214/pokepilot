@@ -1338,14 +1338,6 @@ video {
     font-size: 10px;
 }
 
-.effect-damage-header {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 4px;
-    width: 240px;
-    flex-shrink: 0;
-}
-
 .effect-damage-item-header {
     display: flex;
     flex-direction: column;
@@ -1354,14 +1346,6 @@ video {
     font-size: 10px;
     color: #ccc;
     text-align: center;
-}
-
-.effect-damage-header {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 4px;
-    width: 240px;
-    flex-shrink: 0;
 }
 
 .effect-damage-item {
