@@ -1,6 +1,9 @@
-# PokePilot Pokémon Champions Assistant
+<p align="center">
+  <a href="./README.md"><img alt="中文" src="https://img.shields.io/badge/🇨🇳_中文-Read-red?style=for-the-badge"></a>
+  <a href="./README_EN.md"><img alt="English" src="https://img.shields.io/badge/🇺🇸_English-Current-blue?style=for-the-badge"></a>
+</p>
 
-**English** | [中文](README.md)
+# PokePilot Pokémon Champions Assistant
 
 A local tool for Pokémon Champions-style battles: use a browser with a **capture card / webcam** feed to grab in-game UI screenshots, run **OCR and image recognition** to build **your team and the opponent’s team**, manage **multiple team slots**, and get **simplified damage range estimates** in the browser.
 
