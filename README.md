@@ -1,9 +1,6 @@
-<p align="center">
-  <a href="./README.md"><img alt="中文" src="https://img.shields.io/badge/🇨🇳_中文-当前-red?style=for-the-badge"></a>
-  <a href="./README_EN.md"><img alt="English" src="https://img.shields.io/badge/🇺🇸_English-Read-blue?style=for-the-badge"></a>
-</p>
-
 # PokePilot 宝可梦冠军对战小助手
+
+[English](README_EN.md) | **中文**
 
 面向《宝可梦》冠军赛等对战场景的本地小工具：用浏览器配合**采集卡 / 摄像头画面**截取游戏 UI，通过 **OCR + 图像识别**生成己方与对方队伍数据，并在网页里做**队伍槽位管理**与**简化伤害区间估算**。
 
