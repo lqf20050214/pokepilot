@@ -28,6 +28,8 @@ cd pokepilot
 
 ### 2. 创建虚拟环境
 
+> 克隆后若缺少 `sprites.rar` / `OCR模型.zip`，请先安装 [Git LFS](https://git-lfs.com/) 并执行 `git lfs pull`。
+
 **Conda（推荐）：**
 
 ```bash
@@ -76,22 +78,23 @@ python -m pokepilot.ui.ui_server --debug       # 调试模式
 
 ## 可选：离线资源
 
-以下资源**不在 Git 仓库内**（`sprites/` 被 `.gitignore` 忽略），首次使用相关功能时需要联网自动下载，或手动放置离线包。
+仓库根目录已附带离线资源包（通过 **Git LFS** 托管，克隆时需安装 [Git LFS](https://git-lfs.com/)）：
+
+| 文件 | 用途 |
+|------|------|
+| `sprites.rar` | Champions 菜单精灵图（对方队伍识别） |
+| `OCR模型.zip` | EasyOCR + ResNet50 预训练权重（己方 OCR / 精灵图匹配） |
+
+克隆后若看不到这两个文件，请先执行 `git lfs pull`。
 
 ### 精灵图 `sprites.rar`
 
 对方队伍识别需要 `sprites/champions/` 与 `sprites/champions_shiny/` 下的 Champions 菜单精灵图。
 
-**在线（有网络时）：**
+**离线（推荐，仓库已附带）：**
 
-```bash
-python -m pokepilot.data.download_sprites
-```
-
-**离线：**
-
-1. 将 `sprites.rar` 放到**仓库根目录**（与 `requirements.txt` 同级）
-2. 解压到当前目录，确保出现 `sprites/champions/` 目录
+1. 解压仓库根目录下的 `sprites.rar`
+2. 确保出现 `sprites/champions/` 目录
 
    **Windows：** 用 7-Zip / WinRAR 解压到 `pokepilot` 文件夹
 
@@ -101,26 +104,26 @@ python -m pokepilot.data.download_sprites
    # 或：7z x sprites.rar
    ```
 
+**在线（有网络时，也可不用离线包）：**
+
+```bash
+python -m pokepilot.data.download_sprites
+```
+
 ### OCR 与图像识别模型
 
-首次进行**己方 OCR** 或**对方队伍识别**时，程序会自动下载模型；网络不稳定时可提前手动放置。
+**离线（推荐，仓库已附带）：**
 
-| 用途 | 默认缓存路径 | 所需文件 |
-|------|-------------|----------|
-| 己方文字 OCR（EasyOCR） | `~/.EasyOCR/model/` | `craft_mlt_25k.pth`、`zh_sim_g2.pth`、`english_g2.pth` |
-| 对方精灵图匹配（ResNet50） | `~/.cache/torch/hub/checkpoints/` | `resnet50-0676ba61.pth` |
+解压 `OCR模型.zip`，将其中的文件分别放到：
 
-**EasyOCR 模型** 可从 [EasyOCR Model Hub](https://www.jaided.ai/easyocr/modelhub) 下载，放入 `~/.EasyOCR/model/`（Windows 为 `C:\Users\<用户名>\.EasyOCR\model\`）。
+| 用途 | 目标路径 |
+|------|----------|
+| EasyOCR 模型 | `~/.EasyOCR/model/` |
+| ResNet50 权重 | `~/.cache/torch/hub/checkpoints/` |
 
-**ResNet50 权重** 可从 PyTorch 官方获取：
+**在线：** 首次进行**己方 OCR** 或**对方队伍识别**时，程序会自动下载模型。
 
-```
-https://download.pytorch.org/models/resnet50-0676ba61.pth
-```
-
-下载后放入 `~/.cache/torch/hub/checkpoints/` 即可。
-
-> 若 OCR 长时间卡在 `Downloading:` 且 `~/.cache/torch/` 下出现大小为 0 的 `*.partial` 文件，通常是无法访问外网，请配置代理或使用上述离线方式。
+> 若 OCR 长时间卡在 `Downloading:` 且 `~/.cache/torch/` 下出现大小为 0 的 `*.partial` 文件，通常是无法访问外网，请解压 `OCR模型.zip` 或配置代理。
 
 ---
 
@@ -166,7 +169,9 @@ pokepilot/
 │   ├── pokedb_cache.json
 │   ├── my_team/            # 己方队伍（运行时生成）
 │   └── opp_team/           # 对方队伍（运行时生成）
-├── sprites/                # 精灵图（需下载或离线解压，不入库）
+├── sprites.rar             # 离线精灵图包（Git LFS）
+├── OCR模型.zip             # 离线 OCR/ResNet 模型包（Git LFS）
+├── sprites/                # 解压后的精灵图（不入库）
 ├── screenshots/            # 截图目录（运行时生成）
 ├── requirements.txt
 └── README.md
