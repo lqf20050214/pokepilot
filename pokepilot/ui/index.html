@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>宝可梦冠军对战助手 - PokePilot</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 菜单栏 -->
+        <div class="menubar">
+            <div class="menu-item" id="menu-team" onclick="toggleMenu('menu-team')">
+                我方队伍 ▾
+                <button id="btn-show-layout" class="menu-button-inline" onclick="event.stopPropagation(); toggleLayoutOverlay()" title="显示我方队伍布局">📐</button>
+                <div class="dropdown-menu">
+                    <div class="dropdown-item" onclick="event.stopPropagation(); closeAllMenus(); captureScreen('moves')">截取页面1</div>
+                    <div class="dropdown-item" onclick="event.stopPropagation(); closeAllMenus(); captureScreen('stats')">截取页面2</div>
+                    <div class="dropdown-item" onclick="event.stopPropagation(); closeAllMenus(); identifyTeam()">识别队伍</div>
+                    <div class="dropdown-item submenu-item" onclick="event.stopPropagation()">
+                        读取队伍 ▶
+                        <div class="submenu" id="load-team-submenu">
+                            <div class="dropdown-item">-- 加载中 --</div>
+                        </div>
+                    </div>
+                    <div class="dropdown-item submenu-item" onclick="event.stopPropagation()">
+                        写入队伍 ▶
+                        <div class="submenu" id="save-team-submenu">
+                            <div class="dropdown-item">-- 加载中 --</div>
+                        </div>
+                    </div>
+                    <div class="dropdown-item submenu-item" onclick="event.stopPropagation()">
+                        删除队伍 ▶
+                        <div class="submenu" id="delete-team-submenu">
+                            <div class="dropdown-item">-- 加载中 --</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="menu-item" id="menu-settings" onclick="toggleMenu('menu-settings')">
+                设置 ▾
+                <div class="dropdown-menu">
+                    <div class="dropdown-item submenu-item">
+                        选择视频设备 ▶
+                        <div class="submenu" id="device-submenu">
+                            <div class="dropdown-item">-- 加载中 --</div>
+                        </div>
+                    </div>
+                    <div class="dropdown-item submenu-item">
+                        选择音频设备 ▶
+                        <div class="submenu" id="audio-submenu">
+                            <div class="dropdown-item">-- 加载中 --</div>
+                        </div>
+                    </div>
+                    <div class="dropdown-item" onclick="loadDevices()">刷新设备列表</div>
+                    <div class="dropdown-item" id="btn-start" onclick="startCapture()">开始</div>
+                    <div class="dropdown-item" id="btn-stop" onclick="stopCapture()" disabled>停止</div>
+                </div>
+            </div>
+            <div class="menu-item" onclick="viewTypeEffectiveness()">查看伤害克制</div>
+            <div class="menu-item" onclick="captureScreen('opp_team')">截取对方队伍
+                <button id="btn-show-opponent-layout" class="menu-button-inline" onclick="event.stopPropagation(); toggleOpponentLayoutOverlay()" title="显示对方队伍布局">📐</button>
+            </div>
+            <div class="menu-item" onclick="generateOpponentTeam()">生成对方队伍</div>
+            <div class="menu-item" id="battle-mode-toggle" onclick="toggleBattleMode()">双打</div>
+
+            <div class="menu-status" id="status">等待</div>
+        </div>
+
+        <!-- 主体区 -->
+        <div class="main-area">
+            <!-- 左：我方队伍 -->
+            <div class="team-col my-team">
+                <div class="pokemon-card"><div class="pokemon-placeholder">我方队伍 1</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">我方队伍 2</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">我方队伍 3</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">我方队伍 4</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">我方队伍 5</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">我方队伍 6</div></div>
+            </div>
+
+            <!-- 中：视频 -->
+            <div class="video-col">
+                <!-- <div class="video-header">
+                    实时战斗信息
+                </div> -->
+                <div class="video-container">
+                    <video id="video" autoplay playsinline></video>
+                    <canvas id="layout-canvas" class="layout-overlay" style="display: none;"></canvas>
+                    <canvas id="opponent-layout-canvas" class="layout-overlay" style="display: none;"></canvas>
+                    <div id="layout-controls" class="layout-controls" style="display: none;">
+                        <div class="control-group">
+                            <label>top_y: <span id="top-y-value">265</span></label>
+                            <div class="control-buttons">
+                                <button onclick="adjustTopY(-5)">▲ -5</button>
+                                <button onclick="adjustTopY(-1)">▲ -1</button>
+                                <button onclick="adjustTopY(1)">▼ +1</button>
+                                <button onclick="adjustTopY(5)">▼ +5</button>
+                            </div>
+                        </div>
+                        <div class="control-group">
+                            <label>top_x: <span id="top-x-value">190</span></label>
+                            <div class="control-buttons">
+                                <button onclick="adjustTopX(-5)">◀ -5</button>
+                                <button onclick="adjustTopX(-1)">◀ -1</button>
+                                <button onclick="adjustTopX(1)">▶ +1</button>
+                                <button onclick="adjustTopX(5)">▶ +5</button>
+                            </div>
+                        </div>
+                        <button id="save-layout-btn" class="save-btn" onclick="saveLayoutConfig()">💾 保存配置</button>
+                    </div>
+                    <div id="opponent-layout-controls" class="layout-controls" style="display: none;">
+                        <div class="control-group">
+                            <label>top_y: <span id="opponent-top-y-value">265</span></label>
+                            <div class="control-buttons">
+                                <button onclick="adjustOpponentTopY(-5)">▲ -5</button>
+                                <button onclick="adjustOpponentTopY(-1)">▲ -1</button>
+                                <button onclick="adjustOpponentTopY(1)">▼ +1</button>
+                                <button onclick="adjustOpponentTopY(5)">▼ +5</button>
+                            </div>
+                        </div>
+                        <div class="control-group">
+                            <label>top_x: <span id="opponent-top-x-value">190</span></label>
+                            <div class="control-buttons">
+                                <button onclick="adjustOpponentTopX(-5)">◀ -5</button>
+                                <button onclick="adjustOpponentTopX(-1)">◀ -1</button>
+                                <button onclick="adjustOpponentTopX(1)">▶ +1</button>
+                                <button onclick="adjustOpponentTopX(5)">▶ +5</button>
+                            </div>
+                        </div>
+                        <button id="save-opponent-layout-btn" class="save-btn" onclick="saveOpponentLayoutConfig()">💾 保存配置</button>
+                    </div>
+                </div>
+                <div class="status-panel">
+                    <div id="speed-axis-container">
+                        <div class="speed-axis-controls">
+                            <button id="btn-tailwind-my" class="speed-axis-toggle" onclick="toggleTailwind('my')">我方顺风</button>
+                            <button id="btn-tailwind-opp" class="speed-axis-toggle" onclick="toggleTailwind('opp')">对方顺风</button>
+                        </div>
+                        <div id="speed-opp-top" class="speed-opp-section"></div>
+                        <div id="speed-axis-main">
+                            <div id="speed-markers-my"></div>
+                        </div>
+                        <div id="speed-opp-bottom" class="speed-opp-section"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右：对方队伍 -->
+            <div class="team-col opp-team">
+                <div class="pokemon-card"><div class="pokemon-placeholder">对方队伍 1</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">对方队伍 2</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">对方队伍 3</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">对方队伍 4</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">对方队伍 5</div></div>
+                <div class="pokemon-card"><div class="pokemon-placeholder">对方队伍 6</div></div>
+            </div>
+        </div>
+
+        <!-- 底部信息区 -->
+        <div class="bottom-bar">
+            <div class="info-group">
+                <div class="info-label">日志</div>
+                <div class="info-value" id="info-log">就绪</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 草稿编辑器模态框 -->
+    <div id="draft-editor-overlay">
+        <div class="draft-editor-box">
+            <div class="draft-editor-header">
+                <span>确认并编辑 OCR 结果</span>
+                <button class="draft-editor-close-btn" onclick="closeDraftEditor()">×</button>
+            </div>
+            <div class="draft-tab-bar" id="draft-tab-bar"></div>
+            <div id="draft-tab-panels"></div>
+            <div class="draft-editor-footer">
+                <button onclick="closeDraftEditor()">取消</button>
+                <button onclick="buildTeamFromDraft()">生成队伍</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 伤害克制表弹窗 -->
+    <div id="type-effect-overlay">
+        <div class="effect-table-box">
+            <button class="effect-close-btn" onclick="closeTypeEffect()">×</button>
+            <div class="effect-table-container">
+                <!-- 左侧我方6行宝可梦 -->
+                <div class="effect-side my-side">
+                    <div class="effect-side-header" id="my-effect-header"></div>
+                    <div class="effect-side-content" id="my-effect-content"></div>
+                </div>
+                <!-- 中间分隔 -->
+                <div class="effect-divider"></div>
+                <!-- 右侧对方6行宝可梦 -->
+                <div class="effect-side opp-side">
+                    <div class="effect-side-header" id="opp-effect-header"></div>
+                    <div class="effect-side-content" id="opp-effect-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="move-damage-overlay" class="move-damage-overlay">
+        <div class="move-damage-header">
+            <span id="move-damage-title">技能伤害范围</span>
+            <button onclick="closeMoveDamageOverlay()">×</button>
+        </div>
+        <div id="move-damage-content" class="move-damage-content"></div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="script.js"></script>
+    <script src="team.js"></script>
+    <script src="layout-overlay.js"></script>
+</body>
+</html>

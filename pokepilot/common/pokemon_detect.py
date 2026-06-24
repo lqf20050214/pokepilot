@@ -1,0 +1,466 @@
+"""
+宝可梦识别引擎 - 统一接口
+
+输入: 三个矩形图片（sprite、type1、type2）和背景去除参数
+输出: 识别的宝可梦信息
+"""
+
+from dataclasses import dataclass
+import json
+import os
+from pathlib import Path
+
+import cv2
+import numpy as np
+import torch
+import torch.nn as nn
+import torchvision.transforms as transforms
+from torchvision.models import resnet50
+
+from pokepilot.tools.logger_util import setup_logger
+from pokepilot.data.pokedb import PokeDB
+
+logger = setup_logger(__name__)
+
+# ── 路径 ──────────────────────────────────────────────────────────────────────
+_ROOT = Path(__file__).parent.parent.parent
+_ROSTER_PATH = _ROOT / "data" / "champions_roster.json"
+_CHAMPIONS_DIR = _ROOT / "sprites" / "champions"
+_CHAMPIONS_SHINY = _ROOT / "sprites" / "champions_shiny"
+_TYPES_DIR = _ROOT / "sprites" / "sprites" / "types" / "generation-ix" / "scarlet-violet" / "small"
+
+# 属性 ID → 名称
+_TYPE_NAMES = {
+    1: "normal", 2: "fighting", 3: "flying", 4: "poison",
+    5: "ground", 6: "rock", 7: "bug", 8: "ghost",
+    9: "steel", 10: "fire", 11: "water", 12: "grass",
+    13: "electric", 14: "psychic", 15: "ice", 16: "dragon",
+    17: "dark", 18: "fairy",
+}
+
+
+@dataclass
+class PokemonVariant:
+    """单个宝可梦变体"""
+    slug: str                           # primary key，如 "pikachu-alola"
+    id: int
+    name: str
+    types: list[str]
+    form: str
+    sprite_filename: str | None = None  # sprite 文件名，如 "Menu CP 0025.png"
+    sprite_shiny_filename: str | None = None  # shiny sprite 文件名
+    sprite: np.ndarray | None = None    # 加载后的 normal sprite 图片
+    sprite_shiny: np.ndarray | None = None  # 加载后的 shiny sprite 图片
+
+
+# ── 工具函数 ──────────────────────────────────────────────────────────────────
+
+def _alpha_to_white(img: np.ndarray) -> np.ndarray:
+    """将 RGBA 图合成到白色背景，返回 BGR。"""
+    if img.ndim == 3 and img.shape[2] == 4:
+        alpha = img[:, :, 3:] / 255.0
+        bgr = img[:, :, :3].astype(float)
+        white = np.ones_like(bgr) * 255
+        return (bgr * alpha + white * (1 - alpha)).astype(np.uint8)
+    return img
+
+
+def _extract_features(img: np.ndarray, model: nn.Module, device: torch.device) -> np.ndarray:
+    """用ResNet50提取图片特征向量"""
+    # 转为RGB（opencv是BGR）
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    # 预处理：resize到224x224，归一化
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Resize((224, 224)),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                           std=[0.229, 0.224, 0.225])
+    ])
+
+    img_tensor = transform(img_rgb).unsqueeze(0).to(device)
+
+    with torch.no_grad():
+        features = model(img_tensor)
+
+    return features.cpu().numpy().flatten()
+
+
+def _cosine_similarity(feat1: np.ndarray, feat2: np.ndarray) -> float:
+    """计算两个特征向量的余弦距离（越小越相似）"""
+    feat1 = feat1 / (np.linalg.norm(feat1) + 1e-8)
+    feat2 = feat2 / (np.linalg.norm(feat2) + 1e-8)
+    # 距离 = 1 - 相似度
+    return 1.0 - np.dot(feat1, feat2)
+
+
+def _has_icon(img: np.ndarray, min_std: float = 60.0) -> bool:
+    """颜色标准差低 → 纯色背景（无图标）。std >= min_std 才认为有图标"""
+    # 分别计算三个通道的std，然后求平均
+    channel_stds = np.std(img, axis=(0, 1))  # shape: (3,)
+    avg_std = float(np.mean(channel_stds))
+    return avg_std >= min_std
+
+
+def _remove_bg_multi(img: np.ndarray, bg_colors: list, tolerance: int = 60) -> np.ndarray:
+    """
+    去除多色背景（我方队伍用）。
+    bg_colors: [(B,G,R), ...] 背景颜色列表
+    """
+    mask_bg_total = np.zeros(img.shape[:2], dtype=np.uint8)
+    for bg_color in bg_colors:
+        bg_color = np.array(bg_color, dtype=np.uint8)
+        lo = np.clip(bg_color.astype(int) - tolerance, 0, 255).astype(np.uint8)
+        hi = np.clip(bg_color.astype(int) + tolerance, 0, 255).astype(np.uint8)
+        mask_bg = cv2.inRange(img, lo, hi)
+        mask_bg_total = cv2.bitwise_or(mask_bg_total, mask_bg)
+
+    # 取反得到前景掩码
+    mask_fg = cv2.bitwise_not(mask_bg_total)
+
+    # 形态学清理
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    mask_fg = cv2.morphologyEx(mask_fg, cv2.MORPH_OPEN, kernel)
+
+    result = np.full_like(img, 255)
+    result[mask_fg > 0] = img[mask_fg > 0]
+    return result
+
+
+# ── 宝可梦检测器 ────────────────────────────────────────────────────────────────
+
+class PokemonDetector:
+    """宝可梦识别引擎"""
+
+    def __init__(self):
+        """初始化，加载库和参考数据"""
+        setup_logger(__name__)
+
+        # 设置设备（GPU 或 CPU）
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # 加载预训练的 ResNet50（提取特征，去掉分类层）
+        self.feature_model = resnet50(pretrained=True)
+        self.feature_model = nn.Sequential(*list(self.feature_model.children())[:-1])
+        self.feature_model.to(self.device)
+        self.feature_model.eval()
+
+        # 加载数据库
+        self.db = PokeDB()
+
+        # 加载属性图标
+        self.type_refs = self._load_type_refs()
+
+        # 加载精灵图
+        self.sprite_refs = self._load_sprite_refs()
+
+        # 从 roster 构建 PokemonVariant 字典
+        roster = json.loads(_ROSTER_PATH.read_text(encoding="utf-8"))["pokemon"]
+        self.variants: dict[str, PokemonVariant] = {}
+
+        for pokemon_data in roster:
+            slug = pokemon_data["slug"]
+            variant = PokemonVariant(
+                slug=slug,
+                id=pokemon_data["id"],
+                name=pokemon_data["name"],
+                form=pokemon_data['form'],
+                types=pokemon_data.get("types", []),
+                sprite_filename=pokemon_data.get("sprite"),
+                sprite_shiny_filename=pokemon_data.get("sprite_shiny"),
+                sprite=None,
+                sprite_shiny=None,
+            )
+            self.variants[slug] = variant
+
+        # 加载 sprite 图片到对应的 variant
+        self._load_sprites_into_variants()
+
+        logger.info(f"加载: {len(self.sprite_refs)} 精灵图, {len(self.type_refs)} 属性图标, {len(self.variants)} 宝可梦变体")
+
+    def _load_type_refs(self, size: int = 32) -> dict[int, np.ndarray]:
+        """加载 18 张属性图标"""
+        refs = {}
+        for tid, name in _TYPE_NAMES.items():
+            p = _TYPES_DIR / f"{tid}.png"
+            if not p.exists():
+                continue
+            img = cv2.imread(str(p), cv2.IMREAD_COLOR)
+            if img is not None:
+                refs[tid] = cv2.resize(img, (size, size))
+        return refs
+
+    def _load_sprite_refs(self) -> dict[str, np.ndarray]:
+        """加载精灵图"""
+        refs = {}
+        for directory in (_CHAMPIONS_DIR, _CHAMPIONS_SHINY):
+            if not directory.exists():
+                continue
+            for path in directory.glob("*.png"):
+                img = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+                if img is None:
+                    continue
+                refs[path.stem] = img
+        return refs
+
+    def _load_sprites_into_variants(self):
+        """从 sprite_refs 加载图片到对应的 variant（根据 sprite_filename）"""
+        for variant in self.variants.values():
+            # 加载普通版 sprite（去掉扩展名来匹配 sprite_refs key）
+            if variant.sprite_filename:
+                key = variant.sprite_filename.replace(".png", "")
+                if key in self.sprite_refs:
+                    variant.sprite = self.sprite_refs[key]
+
+            # 加载闪光版 sprite
+            if variant.sprite_shiny_filename:
+                key = variant.sprite_shiny_filename.replace(".png", "")
+                if key in self.sprite_refs:
+                    variant.sprite_shiny = self.sprite_refs[key]
+
+    def _match_type(self, icon: np.ndarray, size: int = 32, threshold: float = 60.0, min_std: float = 10.0) -> int | None:
+        """识别属性图标，返回 type_id 或 None
+
+        Args:
+            icon: 图标图片
+            size: resize 大小
+            threshold: 匹配阈值
+            min_std: 最小标准差（判断是否有图标）
+            remove_bg: 是否去除背景色并用前景主颜色填充
+        """
+        if icon is None or icon.size == 0:
+            return None
+    
+
+        if not _has_icon(icon, min_std=min_std):
+            return None
+        icon_r = cv2.resize(icon, (size, size))
+        best_id, best_score = None, float("inf")
+        for tid, ref in self.type_refs.items():
+            diff = cv2.absdiff(icon_r, ref).mean()
+            if diff < best_score:
+                best_score, best_id = diff, tid
+
+        return best_id if best_score < threshold else None
+
+    def _match_sprite(
+        self,
+        sprite: np.ndarray,
+        candidates: list[PokemonVariant] | None = None,
+        target_size: int = 96,
+        bg_removal: str = "none",
+        bg_colors: list = None,
+        bg_color: np.ndarray | None = None,
+    ) -> tuple[PokemonVariant | None, float, bool]:
+        """识别精灵，返回 (variant, score, is_shiny)。用ResNet50特征提取"""
+        sprite_r = cv2.resize(sprite, (target_size, target_size))
+
+        # 提取目标图片特征
+        target_features = _extract_features(sprite_r, self.feature_model, self.device)
+
+        search = candidates if candidates else list(self.variants.values())
+        best_variant, best_score, is_shiny = None, float("inf"), False
+
+        for variant in search:
+            # 比较普通版
+            if variant.sprite is not None:
+                ref = cv2.resize(variant.sprite, (target_size, target_size))
+                ref = self._preprocess_ref_sprite(ref, bg_removal, bg_colors, bg_color)
+                ref_features = _extract_features(ref, self.feature_model, self.device)
+                score = _cosine_similarity(target_features, ref_features)
+                if score < best_score:
+                    best_score, best_variant = score, variant
+                    is_shiny = False
+
+            # 也比较闪光版
+            if variant.sprite_shiny is not None:
+                ref = cv2.resize(variant.sprite_shiny, (target_size, target_size))
+                ref = self._preprocess_ref_sprite(ref, bg_removal, bg_colors, bg_color)
+                ref_features = _extract_features(ref, self.feature_model, self.device)
+                score = _cosine_similarity(target_features, ref_features)
+                if score < best_score:
+                    best_score, best_variant = score, variant
+                    is_shiny = True
+
+        return best_variant, best_score, is_shiny
+
+    def _preprocess_ref_sprite(
+        self,
+        ref: np.ndarray,
+        bg_removal: str,
+        bg_colors: list | None,
+        bg_color: np.ndarray | None,
+    ) -> np.ndarray:
+        """为参考精灵预处理背景"""
+        if bg_removal == "multi" and bg_colors:
+            # 对 RGBA 图使用 _alpha_to_white
+            return _alpha_to_white(ref)
+        elif bg_removal == "auto" and bg_color is not None:
+            # 用计算出的背景色填充参考图的透明部分
+            if ref.ndim == 3 and ref.shape[2] == 4:
+                alpha = ref[:, :, 3:] / 255.0
+                bgr = ref[:, :, :3].astype(float)
+                bg_color_float = bg_color.astype(float)
+                return (bgr * alpha + bg_color_float * (1 - alpha)).astype(np.uint8)
+            return ref
+        return ref
+
+    def detect(
+        self,
+        sprite: np.ndarray,
+        type1_img: np.ndarray,
+        type2_img: np.ndarray,
+        bg_removal: str = "none",
+        bg_colors: list = None,
+    ) -> dict:
+        """
+        识别宝可梦。
+
+        Args:
+            sprite: sprite 图片矩形
+            type1_img: type1 图片矩形
+            type2_img: type2 图片矩形
+            bg_removal: 背景去除方式
+                - "none": 不去除背景
+                - "auto": 自动检测单色背景（对手队伍）
+                - "multi": 多色背景（我方队伍，需要指定 bg_colors）
+            bg_colors: 多色背景的颜色列表 [(B,G,R), ...]
+            debug: 是否保存调试图片
+
+        Returns:
+            {
+                "id": 25,
+                "name": "pikachu",
+                "slug": "pikachu-alola",
+                "types": ["electric", "fairy"],
+                "score": 1.23,
+                "candidates_searched": 100,
+            }
+        """
+        # 处理背景
+        sprite_clean = sprite
+        bg_color = None
+
+        if bg_removal == "auto":
+            # 计算背景色但不移除，供参考精灵使用
+            corners = [
+                sprite[:5, :5],
+                sprite[:5, -5:],
+                sprite[-5:, :5],
+                sprite[-5:, -5:],
+            ]
+            bg_color = np.median(np.concatenate([c.reshape(-1, 3) for c in corners], axis=0), axis=0)
+        elif bg_removal == "multi" and bg_colors:
+            # 移除目标精灵背景
+            sprite_clean = _remove_bg_multi(sprite, bg_colors, tolerance=40)
+
+        # 识别属性
+        tid1 = self._match_type(type1_img)
+        tid2 = self._match_type(type2_img)
+        types_found = [_TYPE_NAMES[t] for t in [tid1, tid2] if t]
+
+        # 按属性过滤候选
+        candidates = None
+        if types_found:
+            candidates = [
+                v for v in self.variants.values()
+                if (types_found == v.types) and ('-mega' not in v.slug)
+            ]
+
+        # 识别精灵
+        variant, score, is_shiny = self._match_sprite(sprite_clean, candidates, bg_removal=bg_removal, bg_colors=bg_colors, bg_color=bg_color)
+
+        n_searched = len(candidates) if candidates else len(self.variants)
+
+        if variant:
+            # 构建相对于项目根目录的完整精灵图路径
+            if variant.sprite_filename:
+                sprite_key = f"sprites/champions/{variant.sprite_filename}"
+            elif variant.sprite_shiny_filename:
+                sprite_key = f"sprites/champions_shiny/{variant.sprite_shiny_filename}"
+            else:
+                sprite_key = None
+            return {
+                "id": variant.id,
+                "name": variant.name,
+                "slug": variant.slug,
+                "sprite_key": sprite_key,
+                "types": variant.types,
+                "score": float(round(score, 4)),
+                "candidates_searched": n_searched,
+            }
+        else:
+            return {
+                "id": None,
+                "name": "unknown",
+                "slug": "unknown",
+                "sprite_key": None,
+                "types": [],
+                "score": float(round(score, 4)),
+                "candidates_searched": n_searched,
+            }
+
+    def get_variants_by_name(self, name: str) -> list[PokemonVariant]:
+        """按英文名字查找所有 variants（可能包含多个form）"""
+        return [v for v in self.variants.values() if v.name == name]
+
+    def get_detect_card_by_name_and_form(self, name_zh: str, form: str = "") -> dict | None:
+        """
+        根据中文名和form查询detect_card。
+        1. 通过PokeDB将中文名转为英文name
+        2. 查找匹配的variants
+        3. 按form过滤
+        4. 返回detect_card dict
+        """
+        try:
+            name_en = self.db.name_zh_to_en(name_zh)
+            if not name_en:
+                return None
+
+            matching_variants = self.get_variants_by_name(name_en)
+            if not matching_variants:
+                return None
+
+            variant = None
+            if form:
+                variant = next((v for v in matching_variants if v.form == form), None)
+            if not variant and matching_variants:
+                variant = matching_variants[0]
+
+            if not variant:
+                return None
+
+            sprite_filename = variant.sprite_filename
+            sprite_key = f"sprites/champions/{sprite_filename}" if sprite_filename else None
+
+            return {
+                "id": variant.id,
+                "name": variant.name,
+                "slug": variant.slug,
+                "sprite_key": sprite_key,
+                "types": variant.types,
+                "score": 0,
+                "candidates_searched": 0,
+            }
+        except Exception as e:
+            logger.error(f"查询detect_card失败: {e}")
+            return None
+
+    def get_detect_card_by_slug(self, slug: str) -> dict | None:
+        """根据 slug 查询 detect_card"""
+        variant = self.variants.get(slug)
+        if not variant:
+            return None
+
+        sprite_filename = variant.sprite_filename
+        sprite_key = f"sprites/champions/{sprite_filename}" if sprite_filename else None
+
+        return {
+            "id": variant.id,
+            "name": variant.name,
+            "slug": variant.slug,
+            "sprite_key": sprite_key,
+            "types": variant.types,
+            "score": 0,
+            "candidates_searched": 0,
+        }
