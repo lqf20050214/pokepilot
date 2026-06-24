@@ -262,7 +262,7 @@ A: Harmless warning from dependency APIs; upgrading call sites to `weights=` wou
 
 ## Contributing
 
-We welcome issues and pull requests! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+We welcome issues and pull requests!
 
 ## Contact
 
